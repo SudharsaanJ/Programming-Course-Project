@@ -1,4 +1,4 @@
-# Programming-Course-Project
+# Programming Course Project
 
 The purpose of this project is to use the flight data for all commercial flights on major airlines within the USA provided by the 2009 ASA Statistical Computing and Graphics Data Expo from October 1987 to April 2008 to answer the following questions outlined below:
 
