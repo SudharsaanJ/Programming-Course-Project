@@ -1,0 +1,288 @@
+---
+title: "ST2195 Coursework question 3"
+author: "UOL Student Number 200549079"
+date: "2/20/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+**Setting up working directory**
+
+```{r setting & checking working directory}
+
+setwd("C:/Users/Sudharsaan/OneDrive/SIM/Year 2/ST2195 Programming for Data Science/Coursework/Essential Harvard Dataverse Files")
+getwd()
+
+```
+
+**Installing & Loading packages in R**
+
+```{r Installing & Loading packages in R}
+
+#install.packages("DBI")
+library(DBI)
+
+#install.packages("dplyr")
+library(dplyr)
+
+#install.packages("RColorBrewer")
+library(RColorBrewer)
+
+#install.packages("ggplot2")
+library(ggplot2)
+
+#install.packages("ggthemes")
+library(ggthemes)
+
+```
+
+**Creating connection with airlinemain_r.db (already created)**
+
+```{r Connecting with database}
+
+conn <- dbConnect(RSQLite::SQLite(), "airlinemain_r.db")
+
+```
+
+
+
+
+
+**Performing Query on question 3 of coursework**
+
+In this rmarkdown script, we aim to answer the question regarding how the number of people flying between different locations change over time. Before attempting to answer the question, it is important to make a few assumptions given the information available in the dataset. 
+
+One such assumption is that assume each plane houses the same number of passengers when making a trip from one location to another. This is because we lack information regarding the number of passengers who travelled in each plane & the passenger capacity depending on the different plane models. Thus, we will approximate the number of people flying to the number of flights that travel from one location to another. 
+
+We shall answer the question at 3 different scope of levels:
+
+1. Top 10 U.S. airports with most inbound flights over time.
+2. Top 10 U.S. cities with most inbound flights over time.
+3. Top 10 U.S. states with most inbound flights over time. 
+
+We use the concept of inbound flights which helps address the "between different locations" part of the question where in the context of our analyses, planes originate from all around the U.S. to its destination which could be an airport/city/state. 
+
+
+
+**3(a) Top 10 U.S. airports with most inbound flights over time**
+
+```{r Querying on total inbound flights in U.S. airports}
+
+q3airports_analysis <- dbSendQuery(conn,
+                                    "SELECT airports.airport, airports.iata, COUNT(*)
+                                    FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                    WHERE Cancelled = 0 AND Diverted = 0 
+                                    GROUP BY airports.airport
+                                    ORDER BY COUNT(*) DESC")
+q3airports_analysis <- dbFetch(q3airports_analysis)
+q3airports_analysis <- as.data.frame(q3airports_analysis)
+names(q3airports_analysis) <- c("Airport Name", "Airport Code", "Number of Flights")
+q3airports_analysis
+
+```
+```{r Querying on inbound flights in U.S. airports by year & month}
+
+q3airports_full <- dbSendQuery(conn,
+                                    "SELECT ontime.Year, ontime.Month, airports.airport, airports.iata, COUNT(*)
+                                    FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                    WHERE Cancelled = 0 AND Diverted = 0 AND airports.airport != 'None'
+                                    GROUP BY airports.airport, ontime.Year, ontime.Month
+                                    ORDER BY airports.airport, ontime.Year, ontime.Month")
+q3airports_full <- dbFetch(q3airports_full)
+q3airports_full <- as.data.frame(q3airports_full)
+names(q3airports_full) <- c("Year", "Month", "Airport Name", "Airport Code", "Number of Flights")
+q3airports_full
+
+```
+
+```{r Creating a new datetime column using ISOdate function so as to plot line graphs below for airports}
+
+q3airports_full$Date <- ISOdate(q3airports_full$Year, q3airports_full$Month, 1)
+head(q3airports_full)
+
+```
+```{r Reordering q3airports_full dataframe into an appropriate manner}
+
+q3airports_full <- q3airports_full[,c(6,4,5)]
+head(q3airports_full)
+
+```
+```{r Subsetting the dataframe to only retain top 10 U.S. airports to have most inbound flights}
+
+q3airports_top10 <- q3airports_full[(q3airports_full$`Airport Code` == "ATL") | (q3airports_full$`Airport Code` == "ORD") | (q3airports_full$`Airport Code` == "DFW") | (q3airports_full$`Airport Code` == "LAX") | (q3airports_full$`Airport Code` == "DEN") | (q3airports_full$`Airport Code` == "PHX") | (q3airports_full$`Airport Code` == "IAH") | (q3airports_full$`Airport Code` == "LAS") | (q3airports_full$`Airport Code` == "EWR") | (q3airports_full$`Airport Code` == "DTW") ,]
+
+# Resetting index of columns
+row.names(q3airports_top10) <- NULL
+q3airports_top10
+
+```
+```{r Plotting line graphs on Top 10 U.S. airports with most inbound flights}
+
+colours <- brewer.pal(n = 12, name = "Paired")
+
+ggplot(data = q3airports_top10, aes(x = as.Date(q3airports_top10$Date), y = q3airports_top10$`Number of Flights`)) + geom_line(aes(colour=q3airports_top10$`Airport Code`), size = 1) + scale_x_date(date_labels = "%b-%Y") + labs(title = "Figure 3.1: Top 10 U.S. Airports with most inbound flights", x = "Date", y = "Number of Flights") + scale_colour_discrete(name = "Airport Code") + theme_minimal()
+
+```
+
+**Analysis of plot above**
+
+The plot above helps identify seasonality & trends in the top 10 airports with most inbound flights. The data above include data from years 2006 & 2007 (i.e. Month of January for example contains data from January 2007 & January 2007). There are some clear seasonal effects that can be observed from the line graphs above. 
+- There is a decrease in number of flights travelling into an airport from January to February, followed by an increase from February to March in all of the 10 airports as shown above during both periods of Jan-2006 to Mar-2006 & Jan-2007 to Mar-2007. 
+    - Thus, there clearly is some seasonal effect in the number of flights during the months of January to March 
+- There is a decrease in number of flights travelling into an airport from August to September, followed by an increase from September to October in all of the 10 states as shown above during both periods of Aug-2006 to Oct-2006 & Aug-2007 to Sep-2007.
+    - Thus, once again there clearly is some seasonal effect in the number of flights during the months of August to October. 
+    
+    
+    
+**3(b) Top 10 U.S. cities with most inbound flights over time**
+
+```{r Querying on total inbound flights in U.S. cities}
+
+q3cities_analysis <- dbSendQuery(conn,
+                                     "SELECT airports.city, COUNT(*)
+                                     FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                     WHERE Cancelled = 0 AND Diverted = 0 
+                                     GROUP BY airports.city
+                                     ORDER BY COUNT(*) DESC")
+q3cities_analysis <- dbFetch(q3cities_analysis)
+q3cities_analysis <- as.data.frame(q3cities_analysis)
+names(q3cities_analysis) <- c("City Name", "Number of Flights")
+q3cities_analysis
+
+```
+```{r Querying on inbound flights in U.S. cities by year & month}
+
+q3cities_full <- dbSendQuery(conn,
+                                  "SELECT ontime.Year, ontime.Month, airports.city, COUNT(*)
+                                  FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                  WHERE Cancelled = 0 AND Diverted = 0 AND airports.city != 'None'
+                                  GROUP BY airports.city, ontime.Year, ontime.Month
+                                  ORDER BY airports.city, ontime.Year, ontime.Month")
+q3cities_full <- dbFetch(q3cities_full)
+q3cities_full <- as.data.frame(q3cities_full)
+names(q3cities_full) <- c("Year", "Month", "City", "Number of Flights")
+q3cities_full
+
+```
+```{r Creating a new datetime column using ISOdate function so as to plot line graphs below for cities}
+
+q3cities_full$Date <- ISOdate(q3cities_full$Year, q3cities_full$Month, 1)
+head(q3cities_full)
+
+```
+```{r Reordering q3cities_full dataframe into an appropriate manner}
+
+q3cities_full <- q3cities_full[,c(5,3,4)]
+head(q3cities_full)
+
+```
+```{r Subsetting the dataframe to only retain top 10 U.S. cities to have most inbound flights}
+
+q3cities_top10 <- q3cities_full[(q3cities_full$`City` == "Chicago") | (q3cities_full$`City` == "Atlanta") | (q3cities_full$`City` == "Dallas-Fort Worth") | (q3cities_full$`City` == "Houston") | (q3cities_full$`City` == "New York") | (q3cities_full$`City` == "Los Angeles") | (q3cities_full$`City` == "Denver") | (q3cities_full$`City` == "Phoenix") | (q3cities_full$`City` == "Las Vegas") | (q3cities_full$`City` == "Newark") ,]
+
+# Resetting index of columns
+row.names(q3cities_top10) <- NULL
+q3cities_top10
+
+```
+```{r Plotting line graphs on Top 10 U.S. cities with most inbound flights}
+
+colours <- brewer.pal(n = 12, name = "Paired")
+
+ggplot(data = q3cities_top10, aes(x = as.Date(q3cities_top10$Date), y = q3cities_top10$`Number of Flights`)) + geom_line(aes(colour=q3cities_top10$City), size = 1) + scale_x_date(date_labels = "%b-%Y") + labs(title = "Figure 3.2: Top 10 U.S. Cities with most inbound flights", x = "Date", y = "Number of Flights") + scale_colour_discrete(name = "City") + theme_minimal()
+
+```
+
+**Analysis of plot above**
+
+The plot above helps identify seasonality & trends in the top 10 cities with most inbound flights. The data above include data from years 2006 & 2007 (i.e. Month of January for example contains data from January 2007 & January 2007). There are some clear seasonal effects that can be observed from the line graphs above. 
+- There is a decrease in number of flights travelling into a city from January to February, followed by an increase from February to March in all of the 10 cities as shown above during both periods of Jan-2006 to Mar-2006 & Jan-2007 to Mar-2007. 
+    - Thus, there clearly is some seasonal effect in the number of flights during the months of January to March 
+- There is a decrease in number of flights travelling into a city from August to September, followed by an increase from September to October in all of the 10 cities as shown above during both periods of Aug-2006 to Oct-2006 & Aug-2007 to Sep-2007.
+    - Thus, once again there clearly is some seasonal effect in the number of flights during the months of August to October.
+    
+    
+    
+**3(c) Top 10 U.S. states with most inbound flights over time**
+
+```{r Querying on total inbound flights in U.S. states}
+
+q3states_analysis <- dbSendQuery(conn,
+                                     "SELECT airports.state, COUNT(*)
+                                     FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                     WHERE Cancelled = 0 AND Diverted = 0 
+                                     GROUP BY airports.state
+                                     ORDER BY COUNT(*) DESC")
+q3states_analysis <- dbFetch(q3states_analysis)
+q3states_analysis <- as.data.frame(q3states_analysis)
+names(q3states_analysis) <- c("State Name", "Number of Flights")
+q3states_analysis
+
+```
+```{r Querying on inbound flights in U.S. states by year & month}
+
+q3states_full <- dbSendQuery(conn,
+                                  "SELECT ontime.Year, ontime.Month, airports.state, COUNT(*)
+                                  FROM ontime JOIN airports ON ontime.Dest = airports.iata
+                                  WHERE Cancelled = 0 AND Diverted = 0 AND airports.state != 'None'
+                                  GROUP BY airports.state, ontime.Year, ontime.Month
+                                  ORDER BY airports.state, ontime.Year, ontime.Month")
+q3states_full <- dbFetch(q3states_full)
+q3states_full <- as.data.frame(q3states_full)
+names(q3states_full) <- c("Year", "Month", "State", "Number of Flights")
+q3states_full
+
+```
+```{r Creating a new datetime column using ISOdate function so as to plot line graphs below for states}
+
+q3states_full$Date <- ISOdate(q3states_full$Year, q3states_full$Month, 1)
+head(q3states_full) 
+
+```
+```{r Reordering q3states_full dataframe into an appropriate manner}
+
+q3states_full <- q3states_full[,c(5,3,4)]
+head(q3states_full) 
+
+```
+```{r Subsetting the dataframe to only retain top 10 U.S. states to have most inbound flights}
+
+q3states_top10 <- q3states_full[(q3states_full$`State` == "CA") | (q3states_full$`State` == "TX") | (q3states_full$`State` == "IL") | (q3states_full$`State` == "FL") | (q3states_full$`State` == "GA") | (q3states_full$`State` == "NY") | (q3states_full$`State` == "CO") | (q3states_full$`State` == "AZ") | (q3states_full$`State` == "VA") | (q3states_full$`State` == "NV") ,]
+
+# Resetting index of columns
+row.names(q3states_top10) <- NULL
+q3states_top10
+
+```
+```{r Plotting line graphs on Top 10 U.S. states with most inbound flights}
+
+colours <- brewer.pal(n = 12, name = "Paired")
+
+ggplot(data = q3states_top10, aes(x = as.Date(q3states_top10$Date), y = q3states_top10$`Number of Flights`)) + geom_line(aes(colour=q3states_top10$State), size = 1) + scale_x_date(date_labels = "%b-%Y") + labs(title = "Figure 3.3: Top 10 U.S. States with most inbound flights", x = "Date", y = "Number of Flights") + scale_colour_discrete(name = "State") + theme_minimal()
+
+```
+
+**Analysis of plot above**
+
+The plot above helps identify seasonality & trends in the top 10 states with most inbound flights. The data above include data from years 2006 & 2007 (i.e. Month of January for example contains data from January 2007 & January 2007). There are some clear seasonal effects that can be observed from the line graphs above. 
+- There is a decrease in number of flights travelling into a state from January to February, followed by an increase from February to March in all of the 10 states as shown above during both periods of Jan-2006 to Mar-2006 & Jan-2007 to Mar-2007. 
+    - Thus, there clearly is some seasonal effect in the number of flights during the months of January to March 
+- There is a decrease in number of flights travelling into a state from August to September, followed by an increase from September to October in all of the 10 states as shown above during both periods of Aug-2006 to Oct-2006 & Aug-2007 to Sep-2007.
+    - Thus, once again there clearly is some seasonal effect in the number of flights during the months of August to October. 
+
+**Overall observations from plots above**
+
+The seasonal effects are consistent throughout the top 10 airports, cities & states. Thus, we can conclude that there are obvious **seasonal effects** during the periods of **January to March** & **August to September**. The number of passengers flying between different locations fluctuate according to the seasonal effects as explained above.  
+
+**Disconnect from database**
+
+```{r Disconnect from database}
+
+dbDisconnect(conn)
+
+```
