@@ -1,0 +1,287 @@
+---
+title: "ST2195 Coursework question 4"
+author: "UOL Student Number 200549079"
+date: "2/23/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+
+**Setting up working directory**
+
+```{r setting & checking working directory}
+
+setwd("C:/Users/Sudharsaan/OneDrive/SIM/Year 2/ST2195 Programming for Data Science/Coursework/Essential Harvard Dataverse Files")
+getwd()
+
+```
+
+**Installing & Loading packages in R**
+
+```{r Installing & Loading packages in R}
+
+#install.packages("dplyr")
+library(dplyr)
+
+#install.packages("DBI")
+library(DBI)
+
+```
+
+**Creating connection with airlinemain_r.db (already created)**
+
+```{r Connecting with database}
+
+conn <- dbConnect(RSQLite::SQLite(), "airlinemain_r.db")
+
+```
+
+
+
+
+
+**Performing Query on question 4 of coursework**
+
+Question 4 asks whether we are able to detect cascading failures as delays in one airport create delays in others. There are 2 perspectives we can implement to answer the question:
+
+**1. Observe planes which have consecutive flights**
+- We can identify whether a plane has departed late from an airport & reached late at its destination. Then, we can check if the plane has departed late from the destination airport to verify if there are cascading failures. 
+- If the departure delay from the destination airport is greater than its arrival delay at the same destination airport, we can also verify that the delays are increasing as the plane travels from one location to other locations consecutively.
+
+**2. Observe planes that arrive late & how they affect other planes' departure**
+- We can identify a flight that has arrived late & take note of the time at which it arrives at the airport. Then, we identify planes that are scheduled to depart from the same airport within a certain timeframe from which the late flight arrived.
+- We verify if those identified planes also depart late which could be attributed to the plane which reached the airport late. To further verify that the identified planes' late departure is due to the late arrival of the initial flight, we can check whether these late departed flights result in more flights departing late. 
+
+**Answering question 4 using Perspective 1**
+
+The **LateAircraftDelay** variable in the ontime table refers to the delays created as a result of the previous flight's late arrival which requires the use of the same plane to depart from that airport. This in turn causes the current scheduled flight to take off late & creates a domino effect, which causes passengers at other airports to board the aircraft much later as well.
+
+Thus, it makes sense to query aircrafts which have "LateAircraftDelay" to be able to check if there is indeed cascading failures as delays in one airport create delays in others. Take note that we query for LateAircraftDelay with the values between 0 & 100 mins as flights with moderate amounts of delay tend not to have their future fligths cancelled which makes analysis easier for us. 
+
+```{r Querying flights that have experienced LateAircraftDelay}
+
+q4_lateaircraftdelay <- dbSendQuery(conn,
+                                    "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay, DepDelay, Origin, Dest, LateAircraftDelay
+                                    FROM ontime
+                                    WHERE Cancelled = 0 AND Diverted = 0 AND LateAircraftDelay > 0 AND LateAircraftDelay < 100 AND TailNum != 0
+                                    ORDER BY LateAircraftDelay DESC")
+
+q4_lateaircraftdelay <- dbFetch(q4_lateaircraftdelay)
+q4_lateaircraftdelay <- as.data.frame(q4_lateaircraftdelay)
+q4_lateaircraftdelay
+
+```
+
+**Observations from table above**
+
+From the table above, we can observe many flights (1.4 million approximately) that have "LateAircraftDelay" associated with them. We shall analyse the **1st three rows** to check whether delays in one airport result in delays in other airports as well. 
+
+Take note that we need only detect cascading failures which implies that it is sufficient to detect one such case. But we choose to analyse the 1st three rows for good measure. 
+
+**Analysing flight with tail number N165UW on 13th January 2006**
+
+```{r Querying information regarding flight N165UW}
+
+q4_N165UW <- dbSendQuery(conn,
+                         "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay,
+                         DepDelay, Origin, Dest, LateAircraftDelay
+                         FROM ontime
+                         WHERE Year = 2006 AND Month = 1 AND DayofMonth = 13 AND TailNum = 'N165UW'
+                         ORDER BY CRSDepTime")
+
+q4_N165UW <- dbFetch(q4_N165UW)
+q4_N165UW <- as.data.frame(q4_N165UW)
+q4_N165UW
+
+```
+
+**Observations from table above**
+
+Flight N165UW was scheduled to depart from Charlotte/Douglos International (CLT) airport at 1545hrs (as indicated by CRSDepTime) but left at 1731hrs (as indicated by DepTime). This resulted in a departure delay of 106 mins (as indicated by DepDelay). Flight N165UW was scheduled to arrive at LaGuardia (LGA) airport at 1724hrs (as indicated by CRSArrTime) but arrived at 1930hrs (as indicated by ArrTime). This resulted in a arrival delay of 126 mins (as indicated by ArrDelay). This trip was the **origin of the delay** as the flight failed to prepare for departure at its scheduled time. 
+
+Following its delayed arrival at LGA airport. The flight was scheduled to leave from LGA airport at 1820hrs & arrive at CLT airport at 2023hrs. However, due to the delay earlier, it departed from LGA airport at 2013hrs & arrived at CLT airport at 2202hrs which resulted in a departure delay of 113 mins & an arrival delay of 99 mins. The flight was able to **reduce its arrival delay from 126 mins to 99 mins**. Thus, the delays persisted. 
+
+Following the trip from LGA to CLT, flight N165UW was scheduled for another flight from CLT to JAX. It was scheduled to depart from CLT airport at 2130hrs & arrive at JAX airport at 2249hrs. Once again, due to the delay earlier, the flight departed at 2250hrs & arrived at 0001hrs. This reuslted in a departure delay of 80 mins & an arrival delay of 72 mins. The flight was once again able to **reduce its arrival delay from 99 mins to 72 mins**. Thus, the delays continue to persist but reduce over time. 
+
+Thus, we are **able to detect cascading failures** as delays in one airport created delays in others. It is worth mentioning that whether or not these delays persist depends on how spaced the flights' scheduled trips are as flights which have more "break" time between consecutive trips will be able to make up for delays incurred by reducing their break time.  
+
+**Analysing flight with tail number N441US on 13th January 2006**
+
+```{r Querying information regarding flight N441US}
+
+q4_N441US <- dbSendQuery(conn,
+                         "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay, DepDelay, Origin, Dest, LateAircraftDelay
+                         FROM ontime
+                         WHERE Year = 2006 AND Month = 1 AND DayofMonth = 13 AND TailNum = 'N165UW'
+                         ORDER BY CRSDepTime")
+
+q4_N441US <- dbFetch(q4_N441US)
+q4_N441US <- as.data.frame(q4_N441US)
+q4_N441US
+
+```
+
+**Observations from table above**
+
+Similar to Flight N165UW, flight N441US sees its arrival & departure delay persist throughout all of its consecutive trips on 13th January 2006. Thus, we are able to detect another instance of cascading failure as delays in one airport create delays in other airports. 
+
+**Analysing flight with tail number N667AW on 23rd January 2006**
+
+```{r Querying information regarding flight N667AW}
+
+q4_N667AW <- dbSendQuery(conn,
+                         "SELECT Year, Month, DayofMonth, DepTime, CRSDepTime, ArrTime, CRSArrTime, TailNum, ArrDelay, DepDelay, Origin, Dest, LateAircraftDelay
+                         FROM ontime
+                         WHERE Year = 2006 AND Month = 1 AND DayofMonth = 23 AND TailNum = 'N667AW'
+                         ORDER BY CRSDepTime")
+
+q4_N667AW <- dbFetch(q4_N667AW)
+q4_N667AW <- as.data.frame(q4_N667AW)
+q4_N667AW
+
+```
+
+```{r Subsetting appropriate rows required for analysis}
+
+q4_N667AW <- q4_N667AW[c(2,4),]
+q4_N667AW
+
+```
+
+**Observations from table above**
+
+Similar to Flights N165UW & N441US, flight N667AW also experiences persistent departure & arrival delays throughout its consecutive trips on 23rd January 2006. Thus, we detect a 3rd instance of cascading failures as delays in one aiport create delays in other airports. 
+
+**Conclusion**
+
+From the observations made above, we are indeed **able to detect cascading failures** as delays in one aiport create delays in others. 
+
+```{r Closing connection to database}
+
+dbDisconnect(conn)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
