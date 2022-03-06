@@ -9,3 +9,5 @@ The purpose of this project is to use the flight data for all commercial flights
   5.	Use the available resources to construct a model that predicts delays. 
 
 We will be using programming languages such as R & Python to facilitate analysis of the data provided. SQL would be used within R & Python using libraries such as DBI from R & sqlite3 from Python to query results from databases created. 
+
+The R_files & Python_files folder contains rmarkdown & jupyter notebook files answering each of the 5 questions outlined above respectively. 
