@@ -1,0 +1,404 @@
+---
+title: "ST2195 Coursework question 1"
+author: "UOL Student Number 200549079"
+date: "2/16/2022"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+```
+
+**Setting up working directory**
+
+Setting the working directory within location of necessary Harvard Dataverse files is performed beforehand using the files pane where we click the cog icon that says "More" & click "Set as working directory". We can also set up working directory using shortcut "Ctrl+Shift+H"
+
+```{r setting & checking working directory}
+
+setwd("C:/Users/Sudharsaan/OneDrive/SIM/Year 2/ST2195 Programming for Data Science/Coursework/Essential Harvard Dataverse Files")
+
+getwd()
+
+```
+
+**Installation of packages**
+
+Installing necessary packages. We will be using DBI package primary to query the database created. The RColorBrewer package allows us to create cool looking data visualizations with the queries performed.
+
+```{r Installation of packages}
+
+#install.packages("DBI")
+library(DBI)
+
+#install.packages("dplyr")
+library(dplyr)
+
+#install.packages("RColorBrewer")
+library(RColorBrewer)
+display.brewer.all(colorblindFriendly = TRUE) # display all colour palettes for future reference when creating data visualizations.
+
+```
+
+**Deleting database if it exists in preparation for knitting to html**
+
+```{r Deleting database if it exists}
+
+if (file.exists("airlinemain_r.db"))
+  file.remove("airlinemain_r.db")
+
+```
+
+**Creation of database**
+
+The tables created within the airlinemain_r.db database are the 4 tables shown below. These are the 4 tables from which the queries will primarily occur from. Other tables that are created in the database would be subsets of any combinations of the 4 tables below.
+
+1. ontime table contains data from 2006.csv.bz2 & 2007.csv.bz2 files.
+2. airports table contains data from airports.csv
+3. carriers table contains data from carriers.csv
+4. planes tables contains data from plane-data.csv
+
+```{r Creation of database & tables}
+
+conn <- dbConnect(RSQLite::SQLite(), "airlinemain_r.db")
+
+# Loading in data from the csv files into 2 different variables which will be merged using the append function to form the ontime table.
+ontime2006 <- read.csv("2006.csv.bz2", header = TRUE)
+ontime2007 <- read.csv("2007.csv.bz2", header = TRUE)
+
+# Using dbWriteTable to create the ontime table with the help of the append argument to merge the 2 variables created above. We are also writing the table to the airlinemain_r.db database.
+dbWriteTable(conn, "ontime", ontime2006)
+dbWriteTable(conn, "ontime", ontime2007, append = TRUE)
+
+# Loading in data from the airports, carriers, & planes csv files & writing them to the arilinemain_r.db database.
+airports <- read.csv("airports.csv", header = TRUE)
+carriers <- read.csv("carriers.csv", header = TRUE)
+planes <- read.csv("plane-data.csv", header = TRUE)
+
+dbWriteTable(conn, "airports", airports)
+dbWriteTable(conn, "carriers", carriers)
+dbWriteTable(conn, "planes", planes)
+
+dbListTables(conn)
+
+```
+
+
+
+
+
+**Query on question 1 of coursework**
+
+We will now split the query for question 1 into 3 parts.
+- Firstly we will analyse the best month of the year to fly to minimize delays.
+- Secondly, we will analyse the best day of the week to fly to minimize delays.
+- Thirdly, we will analyse the best time of day to fly to minimize delays.
+
+
+
+**1(a) Best month of the year to fly to minimize delays**
+
+**Tables used**: ontime table
+
+**Variables used**: Month, ArrDelay, Cancelled & Diverted
+
+**Reason for variables used**: ArrDelay is used instead of DepDelay because in the perspective of passengers, passengers will not be bothered by departure delay as long as they can arrive in their destination on time. Thus, ArrDelay is a more appropriate variable to use in the context of passengers over DepDelay. We also find the percentage of Cancelled flights, percentage of diverted flights, & percentage of delayed flights by month as it would not be ideal for passengers to book flights in a month where arrival delay is low but percentage of cancelled flights, diverted, or delayed flights are high. Thus, we will look at both percentage of cancelled, diverted, & delayed flights, & arrival delay to decide on the best month to fly to minimize delays.
+
+**Additional information**: We do not restrict arrival delay values to more than 0 since flights that reach ahead of schedule influence the average arrival delay in a sensible way. We also restrict the query to flights that have not been cancelled or diverted as technically they themselves are forms of delays that passengers experience. We instead calculate percentage of cancelled & diverted flights by month of year to be included in our analysis.
+
+```{r Calculating cancelled, diverted, & delayed flights percentage by month}
+
+# We query the values of percentage of cancelled, diverted, & delayed flights by month of year to be included in decision of best month to fly to minimize delays. Due to rmarkdown, the code seems to be indented incorrectly.
+q1a1 <- dbSendQuery(conn,
+                   "SELECT Month, (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100)
+                   FROM ontime
+                   GROUP BY Month
+                   ORDER BY Month")
+q1a1 <- dbFetch(q1a1)
+q1a1 <- as.data.frame(q1a1)
+names(q1a1) <- c("Months", "% of Cancelled flights", "% of Diverted flights", "% of Delayed flights")
+q1a1
+
+```
+
+```{r Calculating average arrival delay by month}
+
+q1a2 <- dbSendQuery(conn,
+                    "SELECT Month, AVG(ArrDelay) as Avg_ArrDelay
+                    FROM ontime
+                    WHERE Cancelled = 0 AND Diverted = 0
+                    GROUP BY Month
+                    ORDER BY Month")
+q1a2 <- dbFetch(q1a2)
+q1a2 <- as.data.frame(q1a2)
+names(q1a2) <- c("Month", "Average Arrival Delay (mins)")
+q1a2
+
+```
+
+**Data visualization (barplot) illustrating best month to fly to minimize delays**
+
+```{r Barplots illustrating best month to fly to minimize delays}
+
+Months <- c("Jan", "Feb", "Mar", "Apr", "May", "June", "July", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+q1a1_colours <- brewer.pal(n = 12, name = "Paired")
+
+# Plotting a bar plot on the Percentage of Cancelled flights by month. 
+barplot(height = as.vector(q1a1[,2]), ylim = c(0, 3.5), names.arg = Months, xlab = "Months", ylab = "Percentage of Cancelled flights", main = "Figure 1.1a: Percentage of Cancelled flights by Month", col = q1a1_colours[1], cex.names = 0.8)
+
+# Plotting a bar plot on the Percentage of Diverted flights by month. 
+barplot(height = as.vector(q1a1[,3]), ylim = c(0, 0.35), names.arg = Months, xlab = "Months", ylab = "Percentage of Diverted flights", main = "Figure 1.1b: Percentage of Diverted flights by Month", col = q1a1_colours[3], cex.names = 0.8)
+
+# Plotting a bar plot on the Percentage of Delayed flights by month. 
+barplot(height = as.vector(q1a1[,4]), ylim = c(0, 55), names.arg = Months, xlab = "Months", ylab = "Percentage of Delayed flights", main = "Figure 1.1c: Percentage of Delayed flights by Month", col = q1a1_colours[9], cex.names = 0.8)
+
+q1a2_colours <- brewer.pal(n = 9, name = "Oranges")
+
+# Plotting a bar plot on the average arrival delay of flights by month. 
+barplot(height = as.vector(q1a2[,2]), names.arg = Months, xlab = "Months", ylab = "Average Arrival Delay in mins", main = "Figure 1.1d: Average Arrival Delay of flights by Month", col = q1a2_colours[4], cex.names = 0.8)
+
+```
+
+**Analysis of results & plots above**
+
+The **percentage of cancelled flights** is lowest in **May** (1.13%), followed by November (1.33%) & September (1.39%). The **percentage of diverted flights** is lowest in **November** (0.16%), followed by October (0.18%) & September (0.19%). The **percentage of delayed flights** is lowest in **September** (40.55%), followed by November (42.00%) & May (43.12%). 
+
+The month with the **lowest average arrival delay** is **November** (6.00 mins), followed by September (6.03 mins) & May (6.96 mins). 
+
+Since the percentage of cancelled & diverted flights are extremely low, we shall not take them into consideration for choosing best month to fly. The main determinants for the best month to fly would be the percentage of delayed flights & the average arrival delay in each month. From the results above, **September** & **November** are the **best months** to fly as the percentage of delayed flights & the average arrival delay is lowest in those months. The values with respect to both Months are very similar & thus we do not have a clear answer regarding the best month to fly. 
+
+**Overall decision on best month to fly**
+
+Based on the analysis above, **September** & **November** as the best months to fly to minimise delays.  
+
+
+
+**1(b) Best day of week to fly to minimize delays**
+
+**Tables used**: ontime table
+
+**Variables used**: Day, ArrDelay, Cancelled & Diverted
+
+**Reasons for Variables Used**: ArrDelay is used instead of DepDelay due to reasons stated earlier in 1(b). We also query information regarding percentage of Diverted flights, Cancelled flights, & Delayed flights by day of week because it is not beneficial for customers to choose a day which has low amount of delays but high probability of flights being cancelled, diverted or delayed.
+
+**Additional Information**: We do not restrict arrival delay values to more than 0 since flights that reach ahead of schedule where ArrDelay < 0 have a positive influence on the average arrival delay values by day of week. We also restrict flights to those that are not cancelled & not diverted as it is difficult to incorporate those delays into the calculation of average arrival delays by day of week. Instead we analyse them through cancelled flight ratio & diverted flights ratio that will be included in our analysis to determine the best day of week to travel.
+
+```{r Calculating cancelled, diverted, & delayed flights percentage by day of week}
+
+q1b1 <- dbSendQuery(conn,
+                    "SELECT DayOfWeek, (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100)
+                    FROM ontime
+                    GROUP BY DayOfWeek
+                    ORDER BY DayOfWeek")
+q1b1 <- dbFetch(q1b1)
+q1b1 <- as.data.frame(q1b1)
+names(q1b1) <- c("Day of Week", "% of Cancelled flights", "% of Diverted flights", "% of Delayed flights")
+q1b1
+
+```
+
+```{r Calculating average arrival delay by day of week}
+
+q1b2 <- dbSendQuery(conn,
+                    "SELECT DayOfWeek, AVG(ArrDelay) 
+                    FROM ontime
+                    WHERE Cancelled = 0 AND Diverted = 0
+                    GROUP BY DayOfWeek
+                    ORDER BY DayOfWeek")
+q1b2 <- dbFetch(q1b2)
+q1b2 <- as.data.frame(q1b2)
+names(q1b2) <- c("Day of Week", "Average Arrival Delay (mins)")
+q1b2
+
+```
+
+**Data visualization (barplot) illustrating best month to fly to minimize delays**
+
+```{r Barplots illustrating best day of week to fly to minimize delays}
+
+DayOfWeek <- c("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+q1a1_colours <- brewer.pal(n = 12, name = "Paired")
+
+# Plotting a bar plot on the Percentage of Cancelled flights by day of week. 
+barplot(height = as.vector(q1b1[,2]), ylim = c(0, 2.5), names.arg = DayOfWeek, xlab = "Day of Week", ylab = "Percentage of Cancelled flights", main = "Figure 1.2a: Percentage of Cancelled flights by Day of Week", col = q1a1_colours[1], cex.names = 0.8)
+
+# Plotting a bar plot on the Percentage of Diverted flights by day of week. 
+barplot(height = as.vector(q1b1[,3]), ylim = c(0, 0.30), names.arg = DayOfWeek, xlab = "Day of Week", ylab = "Percentage of Diverted flights", main = "Figure 1.2b: Percentage of Diverted flights by Day of Week", col = q1a1_colours[3], cex.names = 0.8)
+
+# Plotting a bar plot on the Percentage of Delayed flights by day of week 
+barplot(height = as.vector(q1b1[,4]), ylim = c(0, 55), names.arg = DayOfWeek, xlab = "Day of Week", ylab = "Percentage of Delayed flights", main = "Figure 1.2c: Percentage of Delayed flights by Day of Week", col = q1a1_colours[9], cex.names = 0.8)
+
+q1a2_colours <- brewer.pal(n = 9, name = "Oranges")
+
+# Plotting a bar plot on the average arrival delay of flights by day of week 
+barplot(height = as.vector(q1b2[,2]), ylim = c(0, 14), names.arg = DayOfWeek, xlab = "Day of Week", ylab = "Average Arrival Delay in mins", main = "Figure 1.2d: Average Arrival Delay of flights by Day of Week", col = q1a2_colours[4], cex.names = 0.8)
+
+```
+
+**Analysis of results & plots above**
+
+The **percentage of cancelled flights** is lowest in **Saturday** (1.49%), followed by Sunday (1.78%) & Monday (1.84%). The **percentage of diverted flights** is lowest in **Saturday** (0.19%), followed by Tuesday (0.22%) & Monday (0.22%). The **percentage of delayed flights** is lowest in **Saturday** (40.58%), followed by Tuesday (42.34%) & Wednesday (44.63%).
+
+The day of week with the **lowest average arrival delay** is **Saturday** (5.51 mins), followed by Tuesday (7.25 mins) & Wednesday (8.99 mins). 
+
+Once again, since the percentage of cancelled & diverted flights are extremely low, we shall not take them into consideration for choosing best day of week to fly. The main determinants for the best day of week to fly would be the percentage of delayed flights & the average arrival delay by day of week. From the results above, **Saturday** is the **best day of week** to fly as the percentage of delayed flights & the average arrival delay is lowest in Saturday compared to other days of the week. Even when taking percentage of cancelled & diverted flights into consideration, Saturday remains to have the lowest percentage which sets it as the best day of the week to fly. 
+
+**Overall decision on best day of week to fly**
+
+Based on the analysis above, **Saturday** is the best day of the week to fly to minimise delays.
+
+
+
+**1(c) Best time of day to fly to minimize delays**
+
+**Tables used**: ontime table
+
+**Variables used**: Cancelled, Diverted, ArrDelay, CRSDepTime
+
+**Reason for Variables Used**: The main variable used is CRSDepTime as it refers to the time that the flight is scheduled to depart from the airport. It is more sensible to use CRSDepTime since it would be the data available to passengers prior to them taking their flights. We segment 24 hours in a day into 12 parts of 2 hour length each to analyse the Cancelled Flights ratio & Diverted Flights ratio. We also segment the time to analyse the lowest average arrival delay based on the 12 2-hour time intervals. The reason we choose 2-hour intervals is because, from the code below, the average time flights take to travel from one place to another is **102.32 mins** which is approximately 1hr 40 mins. Thus, it is appropriate to use 2-hour time intervals for the analysis.
+
+**Additional Info**: We do not include Diverted & Cancelled flights in our calculation of lowest average arrival delay based on the 12 2-hour time intervals as it is difficult & inappropriate to incorporate the delays caused by diversion or cancellation of flights. Intead we incorporate the information regarding Diverted & Cancelled flights by time of day using percentage of cancelled & diverted flights. Furthermore, we do not include cancelled flights as they do not have an associated flight travel time. (Even if they are included, since NA values are present, the values will not be used in the calculation)
+
+```{r Finding average airtime of flights to determine interval of times of a 24 hour cycle}
+
+AirTime <- dbSendQuery(conn,
+                       "SELECT AVG(AirTime) as Avg_Flight_Travel_Time
+                        FROM ontime
+                        WHERE Cancelled = 0")
+dbFetch(AirTime)
+
+```
+
+```{r Calculating cancelled, diverted, & delayed flights ratio by time of day}
+
+q1c1 <- dbSendQuery(conn,
+                    "SELECT (AVG(Cancelled)*100), (AVG(Diverted)*100), ((CAST(SUM(CASE WHEN ArrDelay > 0 THEN 1 ELSE 0 END) AS FLOAT)/CAST(COUNT(*) AS FLOAT))*100),
+                    CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                         WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                         WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                         WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                         WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                         WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                         WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                         WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                         WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                         WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                         WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                         WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                         END AS TimeFrame
+                    FROM ontime
+                    GROUP BY CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                                  WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                                  WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                                  WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                                  WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                                  WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                                  WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                                  WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                                  WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                                  WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                                  WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                                  WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                                  END
+                    ORDER BY TimeFrame")
+q1c1 <- dbFetch(q1c1)
+q1c1 <- as.data.frame(q1c1)
+q1c1 <- q1c1[,c(4,1,2,3)]
+names(q1c1) <- c("Time Interval", "% of Cancelled flights", "% of Diverted flights", "% of Delayed flights")
+q1c1
+
+```
+
+**Analysis of results above**
+
+Based on the result, we can once again neglect diverted flights ratio as they are very small for all the 12 time intervals. The Cancelled flights ratio is not insignificant & we observe that the lowest percentage of cancelled flights ratio are from the "0000 to 0159" & "0200 to 0359" time intervals which are less than 1% whereas the highest percentage of cancelled flights ratio are from "1600 to 1759", "1800 to 1959" & "0400 to "0559" which are all more than 3%.
+
+```{r Calculating average arrival delay by time of day}
+
+q1c2 <- dbSendQuery(conn,
+                    "SELECT AVG(ArrDelay),
+                      CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                           WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                           WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                           WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                           WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                           WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                           WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                           WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                           WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                           WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                           WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                           WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                           END AS TimeFrame
+                    FROM ontime
+                    WHERE Cancelled = 0 AND Diverted = 0
+                    GROUP BY CASE WHEN CRSDepTime BETWEEN 0000 AND 0159 THEN '0000 to 0159'
+                                  WHEN CRSDepTime BETWEEN 0200 AND 0359 THEN '0200 to 0359'
+                                  WHEN CRSDepTime BETWEEN 0400 AND 0559 THEN '0400 to 0559'
+                                  WHEN CRSDepTime BETWEEN 0600 AND 0759 THEN '0600 to 0759'
+                                  WHEN CRSDepTime BETWEEN 0800 AND 0959 THEN '0800 to 0959'
+                                  WHEN CRSDepTime BETWEEN 1000 AND 1159 THEN '1000 to 1159'
+                                  WHEN CRSDepTime BETWEEN 1200 AND 1359 THEN '1200 to 1359'
+                                  WHEN CRSDepTime BETWEEN 1400 AND 1559 THEN '1400 to 1559'
+                                  WHEN CRSDepTime BETWEEN 1600 AND 1759 THEN '1600 to 1759'
+                                  WHEN CRSDepTime BETWEEN 1800 AND 1959 THEN '1800 to 1959'
+                                  WHEN CRSDepTime BETWEEN 2000 AND 2159 THEN '2000 to 2159'
+                                  WHEN CRSDepTime BETWEEN 2200 AND 2359 THEN '2200 to 2359'
+                                  END
+                   ORDER BY TimeFrame")
+q1c2 <- dbFetch(q1c2)
+q1c2 <- as.data.frame(q1c2)
+q1c2 <- q1c2[,c(2,1)]
+names(q1c2) <- c("Time Interval", "Average Arrival Delay (mins)")
+q1c2
+
+```
+
+**Data visualization (barplot & heatmap) illustrating best time of day to fly to minimize delays**
+
+```{r Barplots illustrating best time of day to fly to minimize delays}
+
+TimeFrame <- c("0000 to 0159", "0200 to 0359", "0400 to 0559", "0600 to 0759", "0800 to 0959", "1000 to 1159", "1200 to 1359", "1400 to 1559", "1600 to 1759", "1800 to 1959", "2000 to 2059", "2200 to 2359")
+
+q1a1_colours <- brewer.pal(n = 12, name = "Paired")
+
+# Plotting a bar plot on the Percentage of Cancelled flights by time interval in a day. 
+barplot(height = as.vector(q1c1[,2]), ylim = c(0, 2.5), names.arg = TimeFrame, xlab = "Time Interval", ylab = "Percentage of Cancelled flights", main = "Figure 1.3a: Percentage of Cancelled flights by Time of Day", col = q1a1_colours[1], cex.names = 0.4)
+
+# Plotting a bar plot on the Percentage of Diverted flights by time interval in a day. 
+barplot(height = as.vector(q1c1[,3]), ylim = c(0, 0.30), names.arg = TimeFrame, xlab = "Time Interval", ylab = "Percentage of Diverted flights", main = "Figure 1.3b: Percentage of Diverted flights by Time of Day", col = q1a1_colours[3], cex.names = 0.4)
+
+# Plotting a bar plot on the Percentage of Delayed flights by time interval in a day. 
+barplot(height = as.vector(q1c1[,4]), ylim = c(0, 55), names.arg = TimeFrame, xlab = "Time Interval", ylab = "Percentage of Delayed flights", main = "Figure 1.3c: Percentage of Delayed flights by Time of Day", col = q1a1_colours[9], cex.names = 0.4)
+
+q1a2_colours <- brewer.pal(n = 9, name = "Oranges")
+
+# Plotting a bar plot on the average arrival delay of flights by time interval in a day. 
+barplot(height = as.vector(q1c2[,2]), ylim = c(0, 20), names.arg = TimeFrame, xlab = "Time Interval", ylab = "Average Arrival Delay in mins", main = "Figure 1.3d: Average Arrival Delay of flights by Time of Day", col = q1a2_colours[4], cex.names = 0.4)
+
+```
+
+**Analysis of results above**
+
+The **percentage of cancelled flights** is lowest during the time interval of **0000hrs to 0159hrs** (0.70%), followed by 0200hrs to 0359hrs (0.95%) & 2200hrs to 2359hrs (1.41%). The **percentage of diverted flights** is lowest in **0200hrs to 0359hrs** (0.08%), followed by 0000hrs to 0159hrs (0.14%) & 2000hrs to 2159hrs (0.18%). The **percentage of delayed flights** is lowest in **0400hrs to 0559hrs** (31.35%), followed by 0600hrs to 0759hrs (34.30%) & 0800hrs to 0959hrs (39.58%). 
+
+The time of day with the **lowest average arrival delay** is the time interval of **0400hrs to 0559hrs** (0.74 mins), followed by 0600hrs to 0759hrs (1.30 mins) & 0000hrs to 0159hrs (3.51 mins). 
+
+Once again, since the percentage of cancelled & diverted flights are extremely low, we shall not take them into consideration for choosing best time of day to fly. The main determinants for the best time of day to fly would be the percentage of delayed flights & the average arrival delay by time of day. From the results above, **0400hrs to 0559hrs** is the **best time of day** to fly as the percentage of delayed flights & the average arrival delay is lowest during the time interval of 0400hrs to 0559hrs compared to other time intervals within a day.
+
+**Overall decision on Best Time of Day to Fly to Minimize Delays**
+
+Based on the analysis above, **0400hrs to 0559hrs** is the best time of day to fly to minimise delays.
+
+**Disconnect from database**
+
+```{r Disconnect from database}
+
+dbDisconnect(conn)
+
+```
